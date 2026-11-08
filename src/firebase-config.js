@@ -6,4 +6,5 @@ export const firebaseConfig = {
   authDomain: "flipmanager-d0670.firebaseapp.com",
   projectId: "flipmanager-d0670",
  appId: "1:79977960344:web:23eacdfafbbd38ffdbd1ed",
+     workspace: 'partage',
 };
