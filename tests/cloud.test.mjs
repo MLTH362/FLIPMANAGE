@@ -1,7 +1,7 @@
 /* Tests de la couche cloud (parties sans Firebase) : conversions de photos, lots, redirection local/cloud. `npm test`. */
 import { toDoc, fromDoc, chunk, MAX_PHOTO_CHARS } from '../src/core/cloudDocs.js';
 import { blobToDataUrl, dataUrlToBlob } from '../src/utils/blob.js';
-import { isConfigured } from '../src/core/cloud.js';
+import { isConfiguredWith } from '../src/core/cloud.js';
 import * as db from '../src/core/db.js';
 let fail = 0;
 const eq = (n, got, want) => { const ok = JSON.stringify(got) === JSON.stringify(want); if (!ok) fail++; console.log(ok ? 'OK  ' : 'FAIL', n, ok ? '' : `obtenu ${JSON.stringify(got)}`); };
@@ -25,7 +25,9 @@ eq('photo trop lourde refusée', /trop lourde/.test(err), true);
 
 eq('lots', chunk([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
 eq('lots vides', chunk([], 3), []);
-eq('configuration par défaut = mode local', isConfigured(), false);
+/* Test indépendant de votre vrai fichier firebase-config.js (rempli ou non). */
+eq('configuration vide ou modèle = mode local', [isConfiguredWith(null), isConfiguredWith({}), isConfiguredWith({ apiKey: 'COLLEZ_ICI_VOTRE_CLE', projectId: '' }), isConfiguredWith({ apiKey: 'AIzaX', projectId: '' })], [false, false, false, false]);
+eq('configuration remplie = cloud actif', isConfiguredWith({ apiKey: 'AIzaX', projectId: 'flipmanager-123', authDomain: 'a', appId: 'b' }), true);
 
 /* Le reste de l'application passe par db.js : on vérifie la redirection vers le stockage actif. */
 const calls = [];
