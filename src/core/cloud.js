@@ -5,7 +5,9 @@ import { firebaseConfig } from '../firebase-config.js';
 import { toDoc, fromDoc, chunk } from './cloudDocs.js';
 import { blobToDataUrl, dataUrlToBlob } from '../utils/blob.js';
 
-export const isConfigured = () => Boolean(firebaseConfig.apiKey) && !/^COLLEZ/.test(firebaseConfig.apiKey) && Boolean(firebaseConfig.projectId);
+/* Le cloud est actif seulement si la configuration est remplie (clé réelle et identifiant de projet). */
+export const isConfiguredWith = (cfg) => Boolean(cfg?.apiKey) && !/^COLLEZ/.test(cfg.apiKey) && Boolean(cfg.projectId);
+export const isConfigured = () => isConfiguredWith(firebaseConfig);
 
 let sdk = null, pending = 0, status = 'local', failed = false;
 const statusSubs = new Set(), errorSubs = new Set();
