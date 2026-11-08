@@ -5,9 +5,17 @@ import { firebaseConfig } from '../firebase-config.js';
 import { toDoc, fromDoc, chunk } from './cloudDocs.js';
 import { blobToDataUrl, dataUrlToBlob } from '../utils/blob.js';
 
-/* Le cloud est actif seulement si la configuration est remplie (clé réelle et identifiant de projet). */
-export const isConfiguredWith = (cfg) => Boolean(cfg?.apiKey) && !/^COLLEZ/.test(cfg.apiKey) && Boolean(cfg.projectId);
+/* Identifiant d'espace partagé : '' = espace personnel ; null = valeur invalide (lettres minuscules, chiffres, tirets : 3 à 30). */
+export const workspaceIdOf = (cfg) => { const w = cfg?.workspace; if (w == null || w === '') return ''; return /^[a-z0-9][a-z0-9-]{2,29}$/.test(w) ? w : null; };
+/* Message d'erreur de configuration (vide si tout va bien). */
+export const configProblem = (cfg) => (workspaceIdOf(cfg) === null ? 'Le nom de l’espace partagé (workspace) doit contenir 3 à 30 caractères : minuscules, chiffres et tirets.' : '');
+/* Le cloud est actif seulement si la configuration est remplie (clé réelle, identifiant de projet, espace valide). */
+export const isConfiguredWith = (cfg) => Boolean(cfg?.apiKey) && !/^COLLEZ/.test(cfg.apiKey) && Boolean(cfg.projectId) && workspaceIdOf(cfg) !== null;
 export const isConfigured = () => isConfiguredWith(firebaseConfig);
+/* Où vivent les données : users/{uid} (personnel) ou workspaces/{espace} (partagé entre les e-mails autorisés par les règles). */
+export const basePath = (cfg, uid) => { const w = workspaceIdOf(cfg); return w ? ['workspaces', w] : ['users', uid]; };
+export const getWorkspace = () => workspaceIdOf(firebaseConfig) || '';
+export const getConfigProblem = () => configProblem(firebaseConfig);
 
 let sdk = null, pending = 0, status = 'local', failed = false;
 const statusSubs = new Set(), errorSubs = new Set();
@@ -19,7 +27,8 @@ export const getUser = () => sdk?.user || null;
 /* Initialise Firebase et attend l'état de connexion (restauré depuis le navigateur). Renvoie l'utilisateur ou null. */
 export async function startCloud() {
   const [{ initializeApp }, A, F] = await Promise.all([import('firebase/app'), import('firebase/auth'), import('firebase/firestore')]);
-  const app = initializeApp(firebaseConfig), auth = A.getAuth(app);
+  const { workspace: _ws, ...firebaseOptions } = firebaseConfig;
+  const app = initializeApp(firebaseOptions), auth = A.getAuth(app);
   const db = F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }), ignoreUndefinedProperties: true });
   sdk = { A, F, auth, db, user: null };
   await new Promise((resolve) => { let first = true; A.onAuthStateChanged(auth, (u) => { sdk.user = u; if (first) { first = false; resolve(); } }); });
@@ -41,7 +50,7 @@ export async function signIn() {
 export const signOutCloud = () => sdk.A.signOut(sdk.auth);
 
 const need = () => { if (!sdk?.user) throw new Error('non connecté au cloud'); return sdk; };
-const col = (store) => need().F.collection(sdk.db, 'users', sdk.user.uid, store);
+const col = (store) => need().F.collection(sdk.db, ...basePath(firebaseConfig, sdk.user.uid), store);
 const ref = (store, id) => sdk.F.doc(col(store), id);
 
 /* Suit une écriture : état « synchronisation… » jusqu'à l'accusé du serveur, erreur signalée sans bloquer l'application. */
@@ -107,11 +116,25 @@ export const backend = {
 /* Test de bout en bout : écrit un document et attend l'accusé du serveur (règles Firestore, connexion). */
 export async function ping() {
   need();
-  await withTimeout(sdk.F.setDoc(sdk.F.doc(sdk.db, 'users', sdk.user.uid, 'meta', 'ping'), { at: new Date().toISOString() }), 10000,
+  await withTimeout(sdk.F.setDoc(sdk.F.doc(col('meta'), 'ping'), { at: new Date().toISOString(), by: sdk.user.email || '' }), 10000,
     'délai dépassé : vérifiez la connexion Internet et les règles Firestore');
 }
 
 export async function countRemote(store = 'articles') {
   const snap = await sdk.F.getCountFromServer(col(store));
   return snap.data().count;
+}
+
+/* Écoute les changements faits par d'autres personnes (espace partagé) et appelle onChange (regroupés sur 800 ms).
+   Ignore l'état initial, nos propres écritures et le cache hors ligne. */
+export function watch(onChange) {
+  need();
+  const seen = new Set(); let timer = null;
+  for (const store of ['articles', 'sales', 'comparables', 'listings', 'settings']) {
+    sdk.F.onSnapshot(col(store), (snap) => {
+      if (!seen.has(store)) { seen.add(store); return; }
+      if (snap.metadata.hasPendingWrites || snap.metadata.fromCache || !snap.docChanges().length) return;
+      clearTimeout(timer); timer = setTimeout(onChange, 800);
+    }, (e) => console.warn('Écoute en temps réel interrompue', e));
+  }
 }

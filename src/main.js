@@ -4,7 +4,7 @@ import { startRouter } from './router.js';
 import { initStore } from './core/store.js';
 import { setBackend } from './core/db.js';
 import * as local from './core/localdb.js';
-import { isConfigured, startCloud, backend as cloudBackend, onStatus, onError } from './core/cloud.js';
+import { isConfigured, startCloud, backend as cloudBackend, onStatus, onError, watch } from './core/cloud.js';
 import { toast } from './components/ui.js';
 
 /* Tout le démarrage est dans une fonction : pas de « top-level await », que le build de production ne supporte pas. */
@@ -35,12 +35,20 @@ async function boot() {
   }
   startRouter(document.getElementById('view'));
 
-  /* Retour sur l'onglet après un moment : recharge les données (modifiées depuis un autre appareil) sans gêner la saisie. */
-  if (cloudUser) document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState !== 'visible' || Date.now() - lastLoad < 60000 || !navigator.onLine) return;
-    if (document.querySelector('.overlay') || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
+  /* Recharge les données modifiées ailleurs (autre appareil ou autre personne) sans gêner la saisie en cours. */
+  const busy = () => document.querySelector('.overlay') || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
+  let waiting = false;
+  async function refresh() {
+    if (waiting || !navigator.onLine) return;
+    waiting = true;
+    while (busy()) await new Promise((r) => setTimeout(r, 4000)); // attend la fin d'une saisie ou d'une fenêtre ouverte
+    waiting = false;
     try { await initStore(); lastLoad = Date.now(); dispatchEvent(new HashChangeEvent('hashchange')); } catch (e) { console.error(e); }
-  });
+  }
+  if (cloudUser) {
+    watch(refresh); // changements des autres en temps réel
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - lastLoad > 60000) refresh(); });
+  }
 }
 
 boot().catch((err) => { console.error(err); toast('Démarrage impossible : ' + err.message); });

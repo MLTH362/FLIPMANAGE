@@ -1,6 +1,6 @@
 /* Carte « Synchronisation cloud » de la page Paramètres. */
 import * as local from '../core/localdb.js';
-import { isConfigured, getUser, signIn, signOutCloud, ping, countRemote, backend as cloud } from '../core/cloud.js';
+import { isConfigured, getUser, signIn, signOutCloud, ping, countRemote, backend as cloud, getWorkspace, getConfigProblem } from '../core/cloud.js';
 import { backendKind } from '../core/db.js';
 import { esc } from '../utils/dom.js';
 import { confirmDialog, toast, refreshIcons } from '../components/ui.js';
@@ -11,7 +11,7 @@ const box = (title, tag, body) => `<div class="card"><div class="card-title"><h2
 export async function mountCloudCard(el, { exportBackup }) {
   if (!el) return;
   if (!isConfigured()) {
-    el.innerHTML = box('Synchronisation cloud', 'Non configurée', `<p class="muted">Avec Firebase, vos données se synchronisent automatiquement entre vos appareils : plus besoin d’exporter ni d’importer un fichier de sauvegarde. Suivez le guide <strong>FIREBASE.md</strong> (environ 10 minutes, gratuit, sans carte bancaire), puis renseignez <code>src/firebase-config.js</code>.</p>`);
+    el.innerHTML = box('Synchronisation cloud', 'Non configurée', `${getConfigProblem() ? `<div class="alert alert-bad">${esc(getConfigProblem())}</div>` : ''}<p class="muted">Avec Firebase, vos données se synchronisent automatiquement entre vos appareils : plus besoin d’exporter ni d’importer un fichier de sauvegarde. Suivez le guide <strong>FIREBASE.md</strong> (environ 10 minutes, gratuit, sans carte bancaire), puis renseignez <code>src/firebase-config.js</code>.</p>`);
     return;
   }
   const user = getUser();
@@ -27,9 +27,9 @@ export async function mountCloudCard(el, { exportBackup }) {
     return;
   }
 
-  const online = backendKind() === 'cloud';
-  el.innerHTML = box('Synchronisation cloud', online ? 'Active' : 'Cloud injoignable : mode local', `
-    <p class="muted">Connecté en tant que <strong>${esc(user.email || user.displayName || 'utilisateur')}</strong>. Chaque modification est enregistrée dans le cloud automatiquement.</p>
+  const online = backendKind() === 'cloud', ws = getWorkspace();
+  el.innerHTML = box('Synchronisation cloud', online ? (ws ? `Active · espace partagé « ${esc(ws)} »` : 'Active') : 'Cloud injoignable : mode local', `
+    <p class="muted">Connecté en tant que <strong>${esc(user.email || user.displayName || 'utilisateur')}</strong>. ${ws ? 'Vous travaillez dans un <strong>espace partagé</strong> : les personnes autorisées voient et modifient les mêmes données que vous, en temps réel.' : 'Chaque modification est enregistrée dans le cloud automatiquement.'}</p>
     <div class="metrics" style="margin-top:12px"><div class="metric"><span>Articles dans le cloud</span><strong id="n-cloud">…</strong></div><div class="metric"><span>Articles sur cet ordinateur (non synchronisés)</span><strong id="n-local">…</strong></div></div>
     <div class="cloud-row"><button class="btn btn-ghost" id="upload"><i data-lucide="cloud-upload"></i>Envoyer les données de cet ordinateur vers le cloud</button>
       <button class="btn btn-ghost" id="ping"><i data-lucide="activity"></i>Tester la synchronisation</button>
@@ -48,7 +48,7 @@ export async function mountCloudCard(el, { exportBackup }) {
   el.querySelector('#upload').onclick = async (e) => {
     const btn = e.currentTarget;
     if (!(await confirmDialog({ title: 'Envoyer vers le cloud ?', confirmLabel: 'Remplacer le cloud',
-      message: 'Le contenu actuel du cloud sera remplacé par les données de cet ordinateur (photos comprises). Une sauvegarde du cloud actuel est téléchargée avant.' }))) return;
+      message: `Le contenu actuel du cloud${ws ? ' (visible par tous les membres de l’espace partagé)' : ''} sera remplacé par les données de cet ordinateur (photos comprises). Une sauvegarde du cloud actuel est téléchargée avant.${ws ? ' N’envoyez rien depuis un appareil vide.' : ''}` }))) return;
     btn.disabled = true;
     try {
       if (online) await exportBackup('cloud-avant-envoi');

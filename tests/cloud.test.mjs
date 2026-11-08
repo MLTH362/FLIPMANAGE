@@ -1,7 +1,7 @@
 /* Tests de la couche cloud (parties sans Firebase) : conversions de photos, lots, redirection local/cloud. `npm test`. */
 import { toDoc, fromDoc, chunk, MAX_PHOTO_CHARS } from '../src/core/cloudDocs.js';
 import { blobToDataUrl, dataUrlToBlob } from '../src/utils/blob.js';
-import { isConfiguredWith } from '../src/core/cloud.js';
+import { isConfiguredWith, workspaceIdOf, basePath, configProblem } from '../src/core/cloud.js';
 import * as db from '../src/core/db.js';
 let fail = 0;
 const eq = (n, got, want) => { const ok = JSON.stringify(got) === JSON.stringify(want); if (!ok) fail++; console.log(ok ? 'OK  ' : 'FAIL', n, ok ? '' : `obtenu ${JSON.stringify(got)}`); };
@@ -28,6 +28,12 @@ eq('lots vides', chunk([], 3), []);
 /* Test indépendant de votre vrai fichier firebase-config.js (rempli ou non). */
 eq('configuration vide ou modèle = mode local', [isConfiguredWith(null), isConfiguredWith({}), isConfiguredWith({ apiKey: 'COLLEZ_ICI_VOTRE_CLE', projectId: '' }), isConfiguredWith({ apiKey: 'AIzaX', projectId: '' })], [false, false, false, false]);
 eq('configuration remplie = cloud actif', isConfiguredWith({ apiKey: 'AIzaX', projectId: 'flipmanager-123', authDomain: 'a', appId: 'b' }), true);
+
+/* Espace partagé : identifiant valide, chemin des données, protection contre une faute de frappe. */
+const good = { apiKey: 'AIzaX', projectId: 'p' };
+eq('espace partagé : identifiants', [workspaceIdOf(good), workspaceIdOf({ workspace: '' }), workspaceIdOf({ workspace: 'partage' }), workspaceIdOf({ workspace: 'Partage' }), workspaceIdOf({ workspace: 'a/b' }), workspaceIdOf({ workspace: 'ab' })], ['', '', 'partage', null, null, null]);
+eq('chemin personnel / partagé', [basePath(good, 'u1'), basePath({ ...good, workspace: 'equipe-1' }, 'u1')], [['users', 'u1'], ['workspaces', 'equipe-1']]);
+eq('espace invalide = cloud désactivé (pas d\'écriture au mauvais endroit)', [isConfiguredWith({ ...good, workspace: 'Mon Espace' }), configProblem({ ...good, workspace: 'Mon Espace' }) !== '', isConfiguredWith({ ...good, workspace: 'mon-espace' })], [false, true, true]);
 
 /* Le reste de l'application passe par db.js : on vérifie la redirection vers le stockage actif. */
 const calls = [];

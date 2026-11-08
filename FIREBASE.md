@@ -66,3 +66,36 @@ vos quotas. Pour l'éviter, remplacez la condition des règles par :
 | « accès refusé » ou échec du test | Étape 3 : règles non publiées, ou mauvais `projectId` dans `firebase-config.js` |
 | Aucune carte de synchronisation active | `firebase-config.js` encore avec `COLLEZ_ICI…` : l'application reste en mode local |
 | Données vides après connexion | Normal avant l'envoi de l'étape 7 : cliquez sur « Envoyer les données de cet ordinateur » |
+
+## Partager les mêmes données avec une autre personne (espace partagé)
+
+Par défaut, vos données sont **personnelles** : une autre personne qui se connecte voit un espace vide. Pour que deux personnes (ou plus) travaillent sur
+**les mêmes données, en temps réel**, créez un espace partagé :
+
+**1. Autoriser les adresses.** Console Firebase → Firestore → onglet « Règles » → remplacez le contenu par celui du fichier `firestore.rules` de ce dossier,
+puis remplacez `vous@gmail.com` et `autre.personne@gmail.com` par les **adresses Google** réelles (en minuscules) → « Publier ».
+
+**2. Nommer l'espace.** Dans `src/firebase-config.js`, ajoutez une ligne `workspace` dans `firebaseConfig` (3 à 30 caractères : minuscules, chiffres, tirets) :
+```js
+export const firebaseConfig = {
+  apiKey: '...',
+  authDomain: '...',
+  projectId: '...',
+  appId: '...',
+  workspace: 'partage',
+};
+```
+Envoyez ce fichier sur GitHub : le site se met à jour.
+
+**3. Reprendre vos données existantes.** L'espace partagé démarre **vide**. Avant de publier le changement, faites Paramètres → « Exporter une sauvegarde ».
+Une fois le site à jour : connectez-vous, puis Paramètres → « Importer une sauvegarde » (ou « Envoyer les données de cet ordinateur vers le cloud »).
+
+**4. La deuxième personne** ouvre le site, va dans Paramètres, se connecte avec **son** compte Google (celui listé dans les règles) : les données apparaissent.
+Elle ne doit **jamais** cliquer sur « Envoyer les données de cet ordinateur » depuis un appareil vide : cela remplacerait les données communes.
+
+À savoir :
+- Les modifications de l'autre personne apparaissent dans les secondes qui suivent (la page se rafraîchit quand vous ne tapez pas).
+- Chaque membre peut **tout** modifier et supprimer : ne partagez qu'avec une personne de confiance, et exportez une sauvegarde de temps en temps.
+- Si vous modifiez exactement le même article au même moment, la dernière sauvegarde l'emporte.
+- Retirer quelqu'un : supprimez son adresse des règles et publiez.
+- Les quotas gratuits (50 000 lectures et 20 000 écritures par jour) sont partagés par tous les membres : c'est largement suffisant pour deux personnes.
