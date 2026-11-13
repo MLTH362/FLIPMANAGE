@@ -6,8 +6,6 @@ import { money, dateFr, monthKey, monthLabel } from '../utils/format.js';
 import { pageHeader, kpiCard, emptyState } from '../components/ui.js';
 import { esc } from '../utils/dom.js';
 import { chartColors } from '../utils/theme.js';
-import { walletState } from '../core/wallet.js';
-import { walletStrip } from './wallet.js';
 
 Chart.register(...registerables);
 Chart.defaults.font.family = 'Segoe UI, system-ui, sans-serif';
@@ -46,11 +44,9 @@ export function dashboardPage(view) {
   st.articles.forEach((a) => { const c = a.category || 'Sans catégorie'; cats[c] = (cats[c] || 0) + 1; });
   const top = m.done.map((s) => ({ s, p: m.profitOf(s) })).sort((a, b) => b.p - a.p).slice(0, 5);
   const last = [...m.done].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6);
-  const walletHtml = walletStrip(walletState(st), fmt); // budget de départ et croissance
 
   view.innerHTML = pageHeader('Dashboard', 'Vue d’ensemble de votre activité d’achat-revente.',
     '<a class="btn btn-primary" href="#/articles"><i data-lucide="plus"></i>Ajouter un article</a>') + `
-    ${walletHtml}
     <div class="kpis">
       ${kpiCard({ label: 'Chiffre d’affaires', value: fmt(m.revenue), icon: 'wallet', hero: true })}
       ${kpiCard({ label: 'Bénéfices réalisés', value: fmt(m.realised), icon: 'circle-dollar-sign', hero: true, tone: m.realised < 0 ? 'neg' : '' })}

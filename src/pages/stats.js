@@ -6,11 +6,13 @@ import { monthly, byCategory, overview } from '../core/stats.js';
 import { money, pct, monthLabel, today } from '../utils/format.js';
 import { esc } from '../utils/dom.js';
 import { pageHeader, kpiCard, emptyState } from '../components/ui.js';
+import { chartColors } from '../utils/theme.js';
 
 Chart.register(...registerables);
-const GOLD = '#F5BD35', GREY = '#8A93A6', RED = '#F87171';
 
 export function statsPage(view) {
+  const C = chartColors(), GREY = C.grey, RED = C.neg; // couleurs du thème actif
+  Chart.defaults.color = C.text; Chart.defaults.borderColor = C.grid;
   const st = getState(), fmt = (c) => money(c, st.settings.currency), tone = (c) => (c > 0 ? 'pos' : c < 0 ? 'neg' : '');
   const byId = new Map(st.articles.map((a) => [a.id, a]));
   const o = overview(st.articles, st.sales), rows = monthly(st.sales, byId), cats = byCategory(st.articles, st.sales);
@@ -54,11 +56,11 @@ export function statsPage(view) {
   const charts = [], mk = (id, cfg) => { const el = view.querySelector(id); if (el) charts.push(new Chart(el, cfg)); };
   const base = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }, labels = rows.map((r) => monthLabel(r.key));
   mk('#c-month', { data: { labels, datasets: [
-    { type: 'bar', label: 'Bénéfice', data: rows.map((r) => r.profit / 100), backgroundColor: rows.map((r) => (r.profit < 0 ? RED : GOLD)), borderRadius: 5 },
+    { type: 'bar', label: 'Bénéfice', data: rows.map((r) => r.profit / 100), backgroundColor: rows.map((r) => (r.profit < 0 ? RED : C.primary)), borderRadius: 5 },
     { type: 'line', label: 'Chiffre d’affaires', data: rows.map((r) => r.revenue / 100), borderColor: GREY, borderDash: [5, 4], tension: .3, pointRadius: 2 }] },
     options: { ...base, plugins: { legend: { display: true, position: 'bottom' } } } });
-  mk('#c-cum', { type: 'line', data: { labels, datasets: [{ data: rows.map((r) => r.cumProfit / 100), borderColor: GOLD, backgroundColor: 'rgba(245,189,53,.12)', fill: true, tension: .3, pointRadius: 3 }] }, options: base });
+  mk('#c-cum', { type: 'line', data: { labels, datasets: [{ data: rows.map((r) => r.cumProfit / 100), borderColor: C.primary, backgroundColor: C.fill, fill: true, tension: .3, pointRadius: 3 }] }, options: base });
   const sold = cats.filter((c) => c.sold);
-  mk('#c-cat', { type: 'bar', data: { labels: sold.map((c) => c.category), datasets: [{ data: sold.map((c) => c.profit / 100), backgroundColor: sold.map((c) => (c.profit < 0 ? RED : GOLD)), borderRadius: 5 }] }, options: { ...base, indexAxis: 'y' } });
+  mk('#c-cat', { type: 'bar', data: { labels: sold.map((c) => c.category), datasets: [{ data: sold.map((c) => c.profit / 100), backgroundColor: sold.map((c) => (c.profit < 0 ? RED : C.primary)), borderRadius: 5 }] }, options: { ...base, indexAxis: 'y' } });
   return () => charts.forEach((c) => c.destroy());
 }

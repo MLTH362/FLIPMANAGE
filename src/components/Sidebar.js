@@ -1,5 +1,6 @@
 import { icons, createIcons } from 'lucide';
 import { ROUTES } from '../router.js';
+import { getTheme, setTheme } from '../utils/theme.js';
 
 export function renderSidebar(el) {
   el.innerHTML = `
@@ -11,7 +12,21 @@ export function renderSidebar(el) {
       ${ROUTES.map((r) => (r.id === 'parametres' ? '<div class="sep"></div>' : '') +
         `<a href="#/${r.id}" data-route="${r.id}"><i data-lucide="${r.icon}"></i>${r.label}</a>`).join('')}
     </nav>
+    <button type="button" class="theme-btn" id="themebtn"></button>
     <div class="side-foot" id="syncfoot"></div>`;
+  drawThemeButton();
+  document.getElementById('themebtn').onclick = () => {
+    setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+    drawThemeButton();
+    dispatchEvent(new HashChangeEvent('hashchange')); // réaffiche la page : les graphiques reprennent les couleurs du thème
+  };
+  createIcons({ icons });
+}
+
+function drawThemeButton() {
+  const dark = getTheme() === 'dark', b = document.getElementById('themebtn');
+  b.innerHTML = `<i data-lucide="${dark ? 'sun' : 'moon'}"></i><span>${dark ? 'Mode clair' : 'Mode sombre'}</span>`;
+  b.setAttribute('aria-label', dark ? 'Passer en mode clair' : 'Passer en mode sombre');
   createIcons({ icons });
 }
 
