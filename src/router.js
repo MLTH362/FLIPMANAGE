@@ -6,6 +6,7 @@ import { calculatorPage } from './pages/calculator.js';
 import { salesPage } from './pages/sales.js';
 import { marketPage } from './pages/market.js';
 import { listingsPage } from './pages/listings.js';
+import { walletPage } from './pages/wallet.js';
 import { statsPage } from './pages/stats.js';
 import { settingsPage } from './pages/settings.js';
 
@@ -16,6 +17,7 @@ export const ROUTES = [
   { id: 'marche', label: 'Étude de marché', icon: 'search', page: marketPage },
   { id: 'annonces', label: 'Mes annonces', icon: 'file-text', page: listingsPage },
   { id: 'ventes', label: 'Mes ventes', icon: 'receipt', page: salesPage },
+  { id: 'wallet', label: 'Mon wallet', icon: 'wallet', page: walletPage },
   { id: 'statistiques', label: 'Statistiques', icon: 'bar-chart-3', page: statsPage },
   { id: 'parametres', label: 'Paramètres', icon: 'settings', page: settingsPage },
 ];

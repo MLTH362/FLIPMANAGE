@@ -2,6 +2,7 @@
 import { getState, saveArticle } from '../core/store.js';
 import { analyse, saleAt, priceForProfit, priceSteps, scenarios } from '../core/finance.js';
 import { toCents } from '../core/validators.js';
+import { walletState, afford, opGrowth } from '../core/wallet.js';
 import { money, fromCents, symbol, pct } from '../utils/format.js';
 import { esc } from '../utils/dom.js';
 import { pageHeader, emptyState, field, selectField, toast, refreshIcons } from '../components/ui.js';
@@ -84,12 +85,25 @@ export function calculatorPage(view) {
     else if (s && minProfit > 0 && s.profitUnit < minProfit) warns.push(`Ce prix n’atteint pas votre bénéfice minimum souhaité (${fmt(minProfit)} par unité).`);
     if (s && minM > 0 && s.margin != null && s.margin * 100 < minM) warns.push(`Marge inférieure à votre minimum de ${pct(minM / 100)}.`);
 
+    /* Wallet : l'achat est-il possible, et de combien le wallet grandit-il si tout se vend à ce prix ? */
+    const W = walletState(st); let walletHtml = '';
+    if (W.active) {
+      const ok = afford(W.cash, a.totalCost), grow = s ? opGrowth(W.cash, s.profit) : null;
+      walletHtml = `<div class="card"><div class="card-title"><h2>Mon wallet</h2><span>Disponible : ${fmt(W.cash)}</span></div>
+        ${ok.enough ? '' : `<div class="warn" style="margin-top:0;margin-bottom:14px">Achat impossible avec votre wallet : il manque ${fmt(ok.missing)}.</div>`}
+        <div class="metrics">${metric('Coût de cet achat', fmt(a.totalCost), 'achat, livraison, emballage et autres frais')}
+          ${metric('Reste après l’achat', fmt(ok.after), ok.enough ? 'cash disponible − coût' : 'solde insuffisant', ok.after < 0 ? 'neg' : '')}
+          ${metric('Wallet après la vente', s ? fmt(W.cash + s.profit) : '—', 'cash actuel + bénéfice net estimé', s ? tone(s.profit) : '')}
+          ${metric('Croissance sur cette opération', grow == null ? '—' : (grow > 0 ? '+' : '') + pct(grow), 'bénéfice net ÷ cash avant l’achat', grow == null ? '' : tone(grow))}</div></div>`;
+    }
+
     out.innerHTML = `
       <div class="card kpi-hero"><div class="kpi-top"><span>${s ? 'Bénéfice net estimé' : 'Seuil de rentabilité (bénéfice nul)'}</span></div>
         <div class="hero-num ${s ? tone(s.profit) : ''}">${s ? fmt(s.profit) : a.breakEven == null ? '—' : fmt(a.breakEven)}</div>
         <div class="muted">${s ? (inp.qty > 1 ? `soit ${fmt(s.profitUnit)} par unité, pour ${inp.qty} unités` : 'pour cette vente, après frais de vente et cotisations')
           : 'Saisissez un prix de vente pour estimer le bénéfice.'}</div>
         ${warns.map((w) => `<div class="warn">${w}</div>`).join('')}</div>
+      ${walletHtml}
       <div class="card"><div class="metrics">
         ${metric('Coût total', fmt(a.totalCost), 'achat, livraison, emballage et autres frais')}
         ${metric('Coût unitaire', fmt(a.unitCost), 'coût total ÷ quantité')}

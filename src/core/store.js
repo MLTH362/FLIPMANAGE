@@ -9,7 +9,7 @@ import { withCostSnapshot, backfillCosts } from './sales.js';
 import { STATUS_MIGRATION } from './constants.js';
 import { deleteArticleImages } from './images.js';
 
-const DEFAULT_SETTINGS = { id: 'main', budget: 0, currency: 'EUR', goals: [100, 200, 300, 500, 1000], minMargin: 0, chargeRate: 0, monthlyGoal: 0, lastBackupAt: '', market: { ...DEFAULT_MARKET } };
+const DEFAULT_SETTINGS = { id: 'main', budget: 0, currency: 'EUR', goals: [100, 200, 300, 500, 1000], minMargin: 0, chargeRate: 0, monthlyGoal: 0, walletGoal: 0, walletMoves: [], lastBackupAt: '', market: { ...DEFAULT_MARKET } };
 const state = { articles: [], sales: [], comparables: [], listings: [], settings: { ...DEFAULT_SETTINGS } };
 const subs = new Set();
 

@@ -5,14 +5,13 @@ import { getState } from '../core/store.js';
 import { money, dateFr, monthKey, monthLabel } from '../utils/format.js';
 import { pageHeader, kpiCard, emptyState } from '../components/ui.js';
 import { esc } from '../utils/dom.js';
+import { chartColors } from '../utils/theme.js';
+import { walletState } from '../core/wallet.js';
+import { walletStrip } from './wallet.js';
 
 Chart.register(...registerables);
-Chart.defaults.color = '#9AA5B8';
 Chart.defaults.font.family = 'Segoe UI, system-ui, sans-serif';
-Chart.defaults.borderColor = 'rgba(255,255,255,.06)';
 
-const GOLD = '#F5BD35';
-const SHADES = ['#F5BD35', '#C99A28', '#9C7620', '#6F5418', '#4A3911', '#8A93A6'];
 
 /* Calculs du dashboard : uniquement à partir des données enregistrées (centimes entiers). */
 function compute({ articles, sales }) {
@@ -35,6 +34,8 @@ function compute({ articles, sales }) {
 }
 
 export function dashboardPage(view) {
+  const C = chartColors(); // couleurs du thème actif
+  Chart.defaults.color = C.text; Chart.defaults.borderColor = C.grid;
   const st = getState(), cur = st.settings.currency, m = compute(st), fmt = (c) => money(c, cur);
   const tone = (c) => (c > 0 ? 'pos' : c < 0 ? 'neg' : '');
   const name = (s) => esc(m.byId.get(s.articleId)?.name ?? 'Article supprimé');
@@ -45,9 +46,11 @@ export function dashboardPage(view) {
   st.articles.forEach((a) => { const c = a.category || 'Sans catégorie'; cats[c] = (cats[c] || 0) + 1; });
   const top = m.done.map((s) => ({ s, p: m.profitOf(s) })).sort((a, b) => b.p - a.p).slice(0, 5);
   const last = [...m.done].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6);
+  const walletHtml = walletStrip(walletState(st), fmt); // budget de départ et croissance
 
   view.innerHTML = pageHeader('Dashboard', 'Vue d’ensemble de votre activité d’achat-revente.',
     '<a class="btn btn-primary" href="#/articles"><i data-lucide="plus"></i>Ajouter un article</a>') + `
+    ${walletHtml}
     <div class="kpis">
       ${kpiCard({ label: 'Chiffre d’affaires', value: fmt(m.revenue), icon: 'wallet', hero: true })}
       ${kpiCard({ label: 'Bénéfices réalisés', value: fmt(m.realised), icon: 'circle-dollar-sign', hero: true, tone: m.realised < 0 ? 'neg' : '' })}
@@ -87,14 +90,14 @@ export function dashboardPage(view) {
   const labels = months.map(monthLabel);
 
   mk('#c-profit', { type: 'line', data: { labels, datasets: [
-    { label: 'Bénéfice', data: mrows.map((r) => r.profit / 100), borderColor: GOLD, backgroundColor: 'rgba(245,189,53,.12)', fill: true, tension: .35, pointRadius: 3 },
-    { label: 'Chiffre d’affaires', data: mrows.map((r) => r.revenue / 100), borderColor: '#8A93A6', borderDash: [5, 4], tension: .35, pointRadius: 2 }] },
+    { label: 'Bénéfice', data: mrows.map((r) => r.profit / 100), borderColor: C.primary, backgroundColor: C.fill, fill: true, tension: .35, pointRadius: 3 },
+    { label: 'Chiffre d’affaires', data: mrows.map((r) => r.revenue / 100), borderColor: C.grey, borderDash: [5, 4], tension: .35, pointRadius: 2 }] },
     options: { ...base, plugins: { legend: { display: true, position: 'bottom' } } } });
-  mk('#c-sales', { type: 'bar', data: { labels, datasets: [{ data: mrows.map((r) => r.count), backgroundColor: GOLD, borderRadius: 5 }] },
+  mk('#c-sales', { type: 'bar', data: { labels, datasets: [{ data: mrows.map((r) => r.count), backgroundColor: C.primary, borderRadius: 5 }] },
     options: { ...base, scales: { y: { ticks: { precision: 0 } } } } });
-  mk('#c-catprofit', { type: 'bar', data: { labels: catRows.map((r) => r.category), datasets: [{ data: catRows.map((r) => r.profit / 100), backgroundColor: catRows.map((r) => (r.profit < 0 ? '#F87171' : GOLD)), borderRadius: 5 }] },
+  mk('#c-catprofit', { type: 'bar', data: { labels: catRows.map((r) => r.category), datasets: [{ data: catRows.map((r) => r.profit / 100), backgroundColor: catRows.map((r) => (r.profit < 0 ? C.neg : C.primary)), borderRadius: 5 }] },
     options: { ...base, indexAxis: 'y' } });
-  mk('#c-cats', { type: 'doughnut', data: { labels: Object.keys(cats), datasets: [{ data: Object.values(cats), backgroundColor: SHADES, borderColor: '#202938', borderWidth: 3 }] },
+  mk('#c-cats', { type: 'doughnut', data: { labels: Object.keys(cats), datasets: [{ data: Object.values(cats), backgroundColor: C.palette, borderColor: C.card, borderWidth: 3 }] },
     options: { ...base, cutout: '68%', plugins: { legend: { display: true, position: 'bottom' } } } });
 
   return () => charts.forEach((c) => c.destroy());
