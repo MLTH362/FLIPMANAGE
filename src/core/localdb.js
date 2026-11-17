@@ -1,7 +1,7 @@
 /* Stockage local IndexedDB (mode sans compte). Tous les stores sont créés dès la version 1. */
 export const kind = 'local';
-const NAME = 'flipmanager', VERSION = 1;
-const STORES = ['articles', 'images', 'sales', 'comparables', 'listings', 'settings', 'backups'];
+const NAME = 'flipmanager', VERSION = 2; // v2 : stores du Radar
+const STORES = ['articles', 'images', 'sales', 'comparables', 'listings', 'settings', 'backups', 'radarItems', 'radarObs', 'radarHistory'];
 let dbPromise;
 
 export function openDb() {

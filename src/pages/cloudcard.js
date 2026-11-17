@@ -5,7 +5,7 @@ import { backendKind } from '../core/db.js';
 import { esc } from '../utils/dom.js';
 import { confirmDialog, toast, refreshIcons } from '../components/ui.js';
 
-const STORES = ['articles', 'sales', 'comparables', 'listings', 'settings', 'images'];
+const STORES = ['articles', 'sales', 'comparables', 'listings', 'settings', 'images', 'radarItems', 'radarObs', 'radarHistory'];
 const box = (title, tag, body) => `<div class="card"><div class="card-title"><h2>${title}</h2><span>${tag}</span></div>${body}</div>`;
 
 export async function mountCloudCard(el, { exportBackup }) {

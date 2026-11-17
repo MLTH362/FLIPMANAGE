@@ -4,9 +4,11 @@ import { SALE_STATUSES } from './constants.js';
 import { articleCost, estimatedProfit } from './articles.js';
 import { saleCost, saleProfit } from './sales.js';
 import { fromCents } from '../utils/format.js';
+import { ITEM_STATUS, validateObservation } from './radar/model.js';
 
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2; // v2 : ajoute les données du Radar (facultatives : une sauvegarde v1 reste lisible)
 const LISTS = ['articles', 'sales', 'comparables', 'listings', 'images'];
+const RADAR_LISTS = ['radarItems', 'radarObs', 'radarHistory'];
 const isInt = Number.isInteger, isStr = (v) => typeof v === 'string';
 const IMG = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/; // pas de SVG : il peut contenir du script
 
@@ -37,15 +39,24 @@ export function validateBackup(obj) {
   check(d.comparables, 'Comparable', (c) => (!isStr(c.study) || !isStr(c.name) ? 'étude ou nom manquant.' : !money(c.price, 1) ? 'prix invalide.' : ''));
   check(d.listings, 'Annonce', (l) => (!isStr(l.product) ? 'produit manquant.' : ''));
   check(d.images, 'Photo', (p) => (!isStr(p.articleId) ? 'article manquant.' : !isStr(p.data) || !IMG.test(p.data) ? 'image invalide (formats acceptés : PNG, JPEG, WebP, GIF).' : ''));
+  const radarPresent = RADAR_LISTS.filter((k) => d[k] !== undefined);
+  for (const k of radarPresent) if (!Array.isArray(d[k])) errors.push(`Section « ${k} » invalide.`);
+  const radarIds = Array.isArray(d.radarItems) ? check(d.radarItems, 'Produit du Radar', (i) => (!isStr(i.name) || !i.name.trim() ? 'nom manquant.' : !Object.values(ITEM_STATUS).includes(i.status) ? 'statut invalide.' : '')) : new Set();
+  if (Array.isArray(d.radarObs)) check(d.radarObs, 'Observation du Radar', (o) => { const e = validateObservation(o); return e.length ? `${e.join(', ')}.` : ''; });
+  if (Array.isArray(d.radarHistory)) check(d.radarHistory, 'Historique du Radar', (h) => (!isStr(h.itemId) || !isStr(h.date) ? 'produit ou date manquant.' : ''));
   let settings = null;
   if (d.settings != null) { if (typeof d.settings !== 'object' || Array.isArray(d.settings)) errors.push('Réglages invalides.'); else settings = { ...d.settings, id: 'main' }; }
 
   const lost = (list, key) => list.filter((r) => r[key] && !artIds.has(r[key])).length;
   if (lost(d.sales, 'articleId')) warnings.push(`${lost(d.sales, 'articleId')} vente(s) liée(s) à un article absent de la sauvegarde.`);
   if (lost(d.images, 'articleId')) warnings.push(`${lost(d.images, 'articleId')} photo(s) liée(s) à un article absent de la sauvegarde.`);
-  const counts = Object.fromEntries(LISTS.map((k) => [k, d[k].length]));
+  const orphans = (list) => (Array.isArray(list) ? list.filter((r) => r.itemId && !radarIds.has(r.itemId)).length : 0);
+  if (orphans(d.radarObs)) warnings.push(`${orphans(d.radarObs)} observation(s) du Radar liée(s) à un produit absent de la sauvegarde.`);
+  if (orphans(d.radarHistory)) warnings.push(`${orphans(d.radarHistory)} analyse(s) historique(s) du Radar liée(s) à un produit absent de la sauvegarde.`);
+  const radarOk = radarPresent.filter((k) => Array.isArray(d[k]));
+  const counts = Object.fromEntries([...LISTS, ...radarOk].map((k) => [k, d[k].length]));
   if (errors.length > 10) errors.splice(10, errors.length, `… et ${errors.length - 10} autre(s) erreur(s).`);
-  return { errors, warnings, counts, data: errors.length ? null : { ...Object.fromEntries(LISTS.map((k) => [k, d[k]])), settings: settings ? [settings] : [] } };
+  return { errors, warnings, counts, data: errors.length ? null : { ...Object.fromEntries([...LISTS, ...radarOk].map((k) => [k, d[k]])), settings: settings ? [settings] : [] } };
 }
 
 /* ---------------- CSV (séparateur « ; », virgule décimale : s'ouvre directement dans Excel en français) ---------------- */

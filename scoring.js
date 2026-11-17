@@ -17,14 +17,14 @@ export function scoreCriterion(id, label, max, components) {
 export function trendValue(m, cfg = RADAR) {
   if (!m || m.status !== 'ok') return null;
   const t = cfg.trend; let v;
-  if (m.direction === 'emerging') v = 0.7;
+  if (m.direction === 'emerging') v = Math.min(0.8, 0.4 + 0.1 * (m.positives ?? 3)); // démarrage de zéro : prudent, d'autant moins sûr que peu de points sont positifs
   else if (m.ratio <= t.falling) v = 0;
   else if (m.ratio < 1) v = 0.4 * (m.ratio - t.falling) / (1 - t.falling);
   else v = m.ratio < 1.5 ? 0.4 + 0.6 * (m.ratio - 1) / 0.5 : 1;
   if (m.direction === 'spike') v = Math.min(v, 0.3);
   if (m.direction === 'volatile') v = Math.min(v, 0.5);
   if (m.seasonal) v *= 0.7;
-  return clamp01(v);
+  return clamp01(Math.round(v * 1000) / 1000);
 }
 export const speedValue = (days, cfg = RADAR) => clamp01((cfg.speedZeroDays - days) / (cfg.speedZeroDays - cfg.speedFullDays));
 export const competitionValue = (n, cfg = RADAR) => (n == null || n <= 0 ? null : n <= cfg.competitionFull ? 1 : n >= cfg.competitionZero ? 0 : 1 - Math.log(n / cfg.competitionFull) / Math.log(cfg.competitionZero / cfg.competitionFull));
@@ -32,10 +32,11 @@ export const competitionValue = (n, cfg = RADAR) => (n == null || n <= 0 ? null 
 export const attentionPercentile = (value, all) => { const v = all.filter((x) => x != null); return value == null || v.length < 5 ? null : v.filter((x) => x <= value).length / v.length; };
 export { clamp01 };
 
-export function overallScore(criteria) {
-  const known = criteria.filter((c) => c.known), max = known.reduce((t, c) => t + c.max, 0);
-  if (!max) return { score: null, coverage: 0 };
-  return { score: Math.round(known.reduce((t, c) => t + c.points, 0) / max * 100), coverage: Math.round(max) / 100 };
+export function overallScore(criteria, cfg = RADAR) {
+  const known = criteria.filter((c) => c.known), max = known.reduce((t, c) => t + c.max, 0), coverage = Math.round(max) / 100;
+  if (!max) return { score: null, coverage: 0, note: 'Note impossible à calculer : aucune donnée disponible.' };
+  if (coverage < cfg.minCoverage) return { score: null, coverage, note: `Note non calculée : seulement ${Math.round(coverage * 100)} % des critères sont renseignés (minimum ${Math.round(cfg.minCoverage * 100)} %).` };
+  return { score: Math.round(known.reduce((t, c) => t + c.points, 0) / max * 100), coverage, note: null };
 }
 
 /* Classement. La confiance plafonne l'étiquette affichée : faible -> « À surveiller » au mieux ; moyenne -> « Très bonne » au mieux. */

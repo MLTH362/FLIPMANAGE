@@ -13,11 +13,11 @@ export { RADAR, opportunityPricing, recommend };
 export * from './facts.js';
 export { budgetBucket, priceDispersion, maxCostFor } from './pricing.js';
 export { calibration, applyCalibration, makePrediction } from './calibration.js';
-export { parseTrendsCsv, parseCsv, trendMetrics, fetchWikiSeries, wikiPageviewsUrl, parseWikiPageviews, isFresh, addDays } from './timeseries.js';
+export { parseTrendsCsv, parseTrendsFileName, parseCsv, trendMetrics, fetchWikiSeries, wikiPageviewsUrl, parseWikiPageviews, isFresh, addDays } from './timeseries.js';
 export { rankEmerging, emergingCategories, attentionPercentiles, ideasFromRelated, findRadarDuplicate, matchesExisting, norm } from './discover.js';
 export { vintedSearchUrl, googleTrendsUrl, searchSuggestions } from './suggest.js';
 export { WATCHLIST } from './watchlist.js';
-export { scoreCriterion, overallScore, bandsFor, attentionPercentile } from './scoring.js';
+export { scoreCriterion, overallScore, bandsFor, attentionPercentile, trendValue } from './scoring.js';
 
 const median = (a) => { const s = [...a].sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : null; };
 
@@ -59,7 +59,7 @@ function explain(r, ownSales, cfg) {
   const detail = (id) => (by[id].known ? by[id].components.filter((c) => c.value != null).map((c) => c.detail).join(' ; ') : null);
   const q = (question, answer, kind) => ({ q: question, a: answer, kind });
   return [
-    q('Pourquoi ce produit est-il intéressant ?', `${rec.verdict} : ${rec.reasons.join(' ')}${r.score == null ? '' : ` Note ${r.score}/100 sur ${Math.round(r.coverage * 100)} % des critères, confiance ${r.confidence.level}.`}`, r.score == null ? UNKNOWN : ESTIMATE),
+    q('Pourquoi ce produit est-il intéressant ?', `${rec.verdict} : ${rec.reasons.join(' ')}${r.score == null ? (r.scoreNote ? ` ${r.scoreNote}` : '') : ` Note ${r.score}/100 sur ${Math.round(r.coverage * 100)} % des critères, confiance ${r.confidence.level}.`}`, r.score == null ? UNKNOWN : ESTIMATE),
     q('Pourquoi pourrait-il se vendre rapidement ?', by.speed.known ? `D’après vos ventes réelles : ${detail('speed')}.` : `Inconnu : il faut au moins ${cfg.minSalesForSpeed} ventes réelles de ce type pour estimer la vitesse. La popularité n’est pas la vitesse de vente.`, by.speed.known ? VERIFIED : UNKNOWN),
     q('Quelle est sa demande estimée ?', by.demand.known ? `${detail('demand')}.` : 'Inconnue : aucune mesure d’attention du public ni vente réelle.', by.demand.known ? kindOf(...by.demand.components.filter((c) => c.value != null).map((c) => c.kind)) : UNKNOWN),
     q('Quelle est la concurrence ?', by.competition.known ? `${detail('competition')}.` : 'Inconnue : relevez le nombre d’annonces actives similaires sur Vinted.', by.competition.known ? VERIFIED : UNKNOWN),
@@ -77,7 +77,7 @@ function explain(r, ownSales, cfg) {
 export function analyseOpportunity({ item, comparables = [], market = {}, trends = [], activeListings = null, attention = null, ownSales = null, observations = [], buy = null, calibration = null, today, cfg = RADAR }) {
   const pricing = opportunityPricing(comparables, { market, myCondition: item.condition || '', buy, calibration, cfg });
   const criteria = criteriaFor({ pricing, trends, activeListings, attention, ownSales, item, cfg });
-  const { score, coverage } = overallScore(criteria);
+  const { score, coverage, note: scoreNote } = overallScore(criteria, cfg);
   const obs = [...comparables.filter((c) => c.date).map((c) => ({ date: c.date, verifiable: Boolean(c.url) })), ...trends.filter((t) => t.date).map((t) => ({ date: t.date, verifiable: true })),
     ...(activeListings?.date ? [{ date: activeListings.date, verifiable: Boolean(activeListings.url) }] : []), ...observations];
   const confidence = computeConfidence({ n: pricing.counts?.used ?? 0, observations: obs, coverage, today, cfg });
@@ -90,6 +90,6 @@ export function analyseOpportunity({ item, comparables = [], market = {}, trends
     speed: ownSales && ownSales.nDelay >= cfg.minSalesForSpeed ? verified(ownSales.medianDays, `${ownSales.nDelay} vente(s) réelle(s) enregistrée(s)`) : unknown(`moins de ${cfg.minSalesForSpeed} ventes réelles`),
     trends: trends.map((t) => (t.metrics?.status === 'ok' ? verified(t.metrics, t.name, t.date) : unknown(`${t.name} : série insuffisante`))),
   };
-  const result = { id: item.id, item, pricing, criteria, score, coverage, bands: bandsFor(score, confidence.level, cfg), confidence, recommendation, facts, own: ownSales, calibrated: Boolean(calibration?.active) };
+  const result = { id: item.id, item, pricing, criteria, score, scoreNote, coverage, bands: bandsFor(score, confidence.level, cfg), confidence, recommendation, facts, own: ownSales, calibrated: Boolean(calibration?.active) };
   return { ...result, explain: explain(result, ownSales, cfg) };
 }

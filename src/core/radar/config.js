@@ -3,6 +3,8 @@ export const RADAR = {
   maxBudget: 5000,                                  // règle fondamentale : achat prioritaire seulement à 50 € ou moins
   budgets: [1000, 2000, 3000, 4000, 5000],          // filtres « moins de 10 / 20 / 30 / 40 / 50 € »
   weights: { profit: 25, demand: 25, speed: 20, competition: 10, trend: 10, risk: 10 },
+  highConfidenceCoverage: 0.6, // la confiance « élevée » exige au moins 60 % des critères renseignés
+  minCoverage: 0.4,    // en dessous de 40 % de critères renseignés, aucune note n'est calculée (elle serait trompeuse)
   roiFull: 100,        // ROI (%) qui donne la note maximale de rentabilité
   netFull: 800,        // bénéfice net (8 €) qui donne la note maximale de rentabilité
   minNetFloor: 100,    // bénéfice net minimum retenu pour les prix d'achat conseillés (au moins ce montant)

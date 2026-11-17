@@ -130,7 +130,7 @@ export async function countRemote(store = 'articles') {
 export function watch(onChange) {
   need();
   const seen = new Set(); let timer = null;
-  for (const store of ['articles', 'sales', 'comparables', 'listings', 'settings']) {
+  for (const store of ['articles', 'sales', 'comparables', 'listings', 'settings', 'radarItems', 'radarObs', 'radarHistory']) {
     sdk.F.onSnapshot(col(store), (snap) => {
       if (!seen.has(store)) { seen.add(store); return; }
       if (snap.metadata.hasPendingWrites || snap.metadata.fromCache || !snap.docChanges().length) return;

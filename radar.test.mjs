@@ -2,6 +2,7 @@
    la provenance des données (une donnée inconnue reste inconnue) et des propriétés sur des milliers de cas aléatoires. */
 import * as R from '../src/core/radar/index.js';
 import { saleAt } from '../src/core/finance.js';
+import fs from 'node:fs';
 
 let fail = 0;
 const eq = (n, got, want) => { const ok = JSON.stringify(got) === JSON.stringify(want); if (!ok) fail++; console.log(ok ? 'OK  ' : 'FAIL', n, ok ? '' : `\n     obtenu ${JSON.stringify(got)}\n     attendu ${JSON.stringify(want)}`); };
@@ -48,7 +49,9 @@ eq('données manquantes : À SURVEILLER, confiance faible', [empty.recommendatio
 ok('données manquantes : aucune réponse ne contient un montant, toutes « inconnues »', empty.explain.every((e) => e.kind === 'unknown' && !e.a.includes('€')), JSON.stringify(empty.explain.map((e) => e.kind)));
 ok('données manquantes : faits inconnus', empty.facts.referencePrice.kind === 'unknown' && empty.facts.competition.kind === 'unknown' && empty.facts.speed.kind === 'unknown');
 const onlyTrend = R.analyseOpportunity({ ...base, item: { id: 'e', name: 'X' }, trends: [rising] });
-eq('seule la tendance est connue : couverture 10 %, étiquette plafonnée, pas ACHETER', [onlyTrend.coverage, onlyTrend.bands.capped || onlyTrend.bands.shown, onlyTrend.recommendation.verdict], [0.1, true, 'À SURVEILLER']);
+eq('seule la tendance est connue : couverture 10 %, aucune note (trompeuse), pas ACHETER', [onlyTrend.coverage, onlyTrend.score, onlyTrend.bands.shown, /10 %/.test(onlyTrend.scoreNote), onlyTrend.recommendation.verdict], [0.1, null, null, true, 'À SURVEILLER']);
+const partial = R.analyseOpportunity({ ...base, comparables: comps([3000, 3200, 3300, 3400, 3500, 3600]), trends: [rising] });
+ok('assez de critères (rentabilité, tendance, risque = 45 %) : note calculée mais confiance limitée', partial.score !== null && partial.coverage === 0.45 && partial.confidence.level !== 'élevée', `${partial.score} ${partial.coverage}`);
 
 /* ===== 6. Tendance en baisse ===== */
 const down = R.analyseOpportunity({ ...base, comparables: comps([3000, 3200, 3300, 3400, 3500, 3600]), trends: [falling], attention: 0.9, ownSales: sales5, activeListings: listings(25) });
@@ -81,6 +84,20 @@ eq('CSV requêtes associées (TOP / RISING)', [p3.kind, p3.items.length, p3.item
 eq('CSV requêtes associées (en-têtes français probables)', R.parseTrendsCsv('Catégorie : Toutes\n\nPrincipales\nrequête,valeur\nwalkman,100\n\nEn hausse\nrequête,valeur\ndiscman,Pic\n').items.map((i) => [i.section, i.query, i.breakout]), [['top', 'walkman', false], ['rising', 'discman', true]]);
 eq('CSV non reconnu', [R.parseTrendsCsv('a,b\n1,2\n').kind, R.parseTrendsCsv('').kind], ['unknown', 'unknown']);
 
+/* ===== Vrais exports Google Trends (fichiers fournis par l'utilisateur, nouvelle interface 2026) ===== */
+const FX = new URL('./fixtures/', import.meta.url).pathname, F1 = 'time_series_FR_20251115-2026_20261115-2026.csv', F2 = 'time_series_FR_20261114-2028_20261115-2028.csv';
+const real1 = R.parseTrendsCsv(fs.readFileSync(FX + F1, 'utf8')), real2 = R.parseTrendsCsv(fs.readFileSync(FX + F2, 'utf8'));
+eq('export réel hebdomadaire : série de 53 semaines, terme absent du fichier', [real1.kind, real1.granularity, real1.terms[0].points.length, real1.terms[0].termKnown, real1.terms[0].term, real1.terms[0].chartLabel], ['timeseries', 'week', 53, false, null, 'Intérêt dans le temps']);
+eq('export réel : seules 2 semaines non nulles (100 et 89)', real1.terms[0].points.filter((p) => p.value > 0), [{ date: '2026-11-01', value: 100 }, { date: '2026-11-08', value: 89 }]);
+const trend1 = R.trendMetrics(real1.terms[0].points, { granularity: 'week', today: '2026-11-15' });
+eq('export réel : démarrage de zéro détecté (« émergente »), semaine en cours écartée', [trend1.status, trend1.direction, trend1.positives, trend1.droppedPartial, trend1.meanBase], ['ok', 'emerging', 2, '2026-11-15', 0]);
+eq('export réel : 2 points positifs = note de tendance prudente (0,6 sur 1)', R.trendValue(trend1), 0.6);
+eq('export réel : sans « today », rien n\'est écarté', R.trendMetrics(real1.terms[0].points, { granularity: 'week' }).droppedPartial, null);
+eq('export réel 24 h : horodatages conservés, granularité intraday', [real2.kind, real2.granularity, real2.terms[0].points.length, new Set(real2.terms[0].points.map((p) => p.date)).size, real2.terms[0].chartLabel], ['timeseries', 'intraday', 91, 91, 'Requêtes associées']);
+const trend2 = R.trendMetrics(real2.terms[0].points, { granularity: real2.granularity, today: '2026-11-15' });
+ok('export réel 24 h : trop court pour une tendance, raison fournie', trend2.status === 'insufficient' && /trop courte/.test(trend2.reason), JSON.stringify(trend2));
+eq('nom de fichier : périmètre et période déduits', [R.parseTrendsFileName(F1), R.parseTrendsFileName('/tmp/' + F2).end, R.parseTrendsFileName('export.csv')], [{ geo: 'FR', start: '2025-11-15T20:26', end: '2026-11-15T20:26' }, '2026-11-15T20:28', null]);
+
 /* ===== Mesure de la tendance ===== */
 const flat = (n, v) => Array(n).fill(v);
 const tm = (vals, g = 'week') => R.trendMetrics(series(vals), { granularity: g });
@@ -90,6 +107,7 @@ eq('tendance : en baisse', tm([...flat(26, 20), ...flat(8, 12)]).direction, 'fal
 eq('tendance : stable', tm([...flat(26, 20), ...flat(8, 21)]).direction, 'stable');
 eq('tendance : démarre de zéro', tm([...flat(26, 0), ...flat(8, 6)]).direction, 'emerging');
 eq('tendance : hausse irrégulière', tm([...flat(26, 10), 40, 40, 40, 5, 5, 5, 5, 5]).direction, 'volatile');
+eq('hausse partie de zéro : 1 seul point = pic ponctuel, aucun point = stable', [tm([...flat(30, 0), 0, 0, 0, 0, 0, 0, 0, 80]).direction, tm(flat(34, 0)).direction], ['spike', 'stable']);
 eq('tendance : série trop courte = insuffisante, pas de ratio inventé', [tm([1, 2, 3, 4, 5]).status, tm([1, 2, 3, 4, 5]).ratio], ['insufficient', undefined]);
 const seasonalVals = Array.from({ length: 110 }, (_, i) => (i >= 102 || (i >= 50 && i < 58) ? 25 : 10));
 eq('tendance : même hausse l\'an dernier = saisonnière', [tm(seasonalVals).direction, tm(seasonalVals).seasonal], ['rising', true]);
@@ -166,7 +184,7 @@ for (let k = 0; k < 4000; k++) {
   const p = a.pricing, rec = a.recommendation, fail1 = (m) => bad.push(`${m} ${JSON.stringify({ cs: cs.length, market, buy })}`);
   if (a.criteria.some((c) => (c.known ? c.points < 0 || c.points > c.max : c.points !== null))) fail1('points hors limites ou inventés');
   if (a.score !== null && (a.score < 0 || a.score > 100)) fail1('note hors 0-100');
-  if (a.coverage < 0 || a.coverage > 1 || (a.score === null) !== (a.coverage === 0)) fail1('couverture incohérente');
+  if (a.coverage < 0 || a.coverage > 1 || (a.score === null) !== (a.coverage < R.RADAR.minCoverage)) fail1('couverture incohérente');
   if (a.bands.raw && R.RADAR.bands.indexOf(a.bands.shown) > R.RADAR.bands.indexOf(a.bands.raw)) fail1('étiquette affichée supérieure à la brute');
   if (!p.insufficient) {
     if (p.idealBuy != null && (p.maxBuy == null || p.idealBuy > p.maxBuy)) fail1('idéal supérieur au maximum');

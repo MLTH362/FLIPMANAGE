@@ -13,13 +13,13 @@ function download(name, content, type) {
   const url = URL.createObjectURL(new Blob([content], { type })), a = Object.assign(document.createElement('a'), { href: url, download: name });
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
-const stores = ['articles', 'sales', 'comparables', 'listings', 'settings', 'images'];
+const stores = ['articles', 'sales', 'comparables', 'listings', 'settings', 'images', 'radarItems', 'radarObs', 'radarHistory'];
 
 /* Lit toute la base (photos converties en texte) et construit l'objet de sauvegarde. */
 async function buildBackup() {
-  const [articles, sales, comparables, listings, settings, images] = await Promise.all(stores.map((s) => db.getAll(s)));
+  const [articles, sales, comparables, listings, settings, images, radarItems, radarObs, radarHistory] = await Promise.all(stores.map((s) => db.getAll(s)));
   const imgs = await Promise.all(images.map(async ({ blob, ...rest }) => ({ ...rest, type: blob.type, data: await blobToDataUrl(blob) })));
-  return { app: 'flipmanager', version: BACKUP_VERSION, exportedAt: new Date().toISOString(), data: { articles, sales, comparables, listings, settings: settings.find((x) => x.id === 'main') || null, images: imgs } };
+  return { app: 'flipmanager', version: BACKUP_VERSION, exportedAt: new Date().toISOString(), data: { articles, sales, comparables, listings, settings: settings.find((x) => x.id === 'main') || null, images: imgs, radarItems, radarObs, radarHistory } };
 }
 async function exportBackup(label = 'sauvegarde') {
   const b = await buildBackup();
@@ -82,7 +82,7 @@ export function settingsPage(view) {
     if (r.errors.length) { showErr(r.errors); return; }
     const c = r.counts, now = getState();
     const ok = await confirmDialog({ title: 'Remplacer toutes vos données ?', confirmLabel: 'Remplacer et importer',
-      message: `La sauvegarde contient ${c.articles} article(s), ${c.sales} vente(s), ${c.comparables} comparable(s), ${c.listings} annonce(s) et ${c.images} photo(s). Vos données actuelles (${now.articles.length} article(s), ${now.sales.length} vente(s)) seront remplacées. Une sauvegarde de sécurité sera téléchargée avant.${r.warnings.length ? ' Avertissements : ' + esc(r.warnings.join(' ')) : ''}` });
+      message: `La sauvegarde contient ${c.articles} article(s), ${c.sales} vente(s), ${c.comparables} comparable(s), ${c.listings} annonce(s), ${c.radarItems != null ? `${c.radarItems} produit(s) du Radar, ` : ''}et ${c.images} photo(s). Vos données actuelles (${now.articles.length} article(s), ${now.sales.length} vente(s)) seront remplacées. Une sauvegarde de sécurité sera téléchargée avant.${r.warnings.length ? ' Avertissements : ' + esc(r.warnings.join(' ')) : ''}` });
     if (!ok) return;
     try {
       await exportBackup('avant-import'); // filet de sécurité : si cela échoue, rien n'est remplacé

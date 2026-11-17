@@ -4,13 +4,16 @@
    sale    = { id, articleId, date, price, fees, expenses, status: 'terminée'|'annulée'|'remboursée' } */
 import * as db from './db.js';
 import { DEFAULT_MARKET } from './market.js';
-import { migrateArticle } from './articles.js';
+import { migrateArticle, findDuplicate } from './articles.js';
+import { uid } from '../utils/dom.js';
+import { ITEM_STATUS, newRadarItem, validateObservation, articleFromRadar } from './radar/model.js';
+import { findRadarDuplicate, matchesExisting } from './radar/discover.js';
 import { withCostSnapshot, backfillCosts } from './sales.js';
 import { STATUS_MIGRATION } from './constants.js';
 import { deleteArticleImages } from './images.js';
 
 const DEFAULT_SETTINGS = { id: 'main', budget: 0, currency: 'EUR', goals: [100, 200, 300, 500, 1000], minMargin: 0, chargeRate: 0, monthlyGoal: 0, walletGoal: 0, walletMoves: [], lastBackupAt: '', market: { ...DEFAULT_MARKET } };
-const state = { articles: [], sales: [], comparables: [], listings: [], settings: { ...DEFAULT_SETTINGS } };
+const state = { articles: [], sales: [], comparables: [], listings: [], radar: { items: [], obs: [], history: [] }, settings: { ...DEFAULT_SETTINGS } };
 const subs = new Set();
 
 export const getState = () => state;
@@ -28,6 +31,9 @@ export async function initStore() {
   state.sales = sales.map((s) => fixed.get(s.id) || s); state.comparables = comparables; state.listings = listings;
   const saved = settings.find((s) => s.id === 'main') || {};
   state.settings = { ...DEFAULT_SETTINGS, ...saved, market: { ...DEFAULT_MARKET, ...(saved.market || {}) } }; // anciennes bases : valeurs par défaut ajoutées
+  // Radar : une lecture impossible ne doit jamais empêcher le reste de l'application de démarrer
+  const [rItems, rObs, rHist] = await Promise.all(['radarItems', 'radarObs', 'radarHistory'].map((s) => db.getAll(s).catch((e) => { console.error(`Radar : lecture de « ${s} » impossible`, e); return []; })));
+  state.radar = { items: rItems, obs: rObs, history: rHist };
   navigator.storage?.persist?.(); // demande au navigateur de ne pas purger les données
   emit();
 }
@@ -119,4 +125,69 @@ export async function removeListing(id) {
   await db.remove('listings', id);
   state.listings = state.listings.filter((x) => x.id !== id);
   emit();
+}
+
+/* ---------- Radar tendances ---------- */
+const upsert = (list, rec) => { const i = list.findIndex((x) => x.id === rec.id); if (i >= 0) list[i] = rec; else list.push(rec); };
+
+/* Ajoute un produit suivi. Un doublon (nom identique ou proche) est refusé : { ok: false, duplicate }.
+   `existing` indique si le produit figure déjà dans les articles ou les études de marché (information, sans blocage). */
+export async function addRadarItem(draft) {
+  const duplicate = findRadarDuplicate(state.radar.items, draft.name);
+  if (duplicate) return { ok: false, duplicate };
+  const item = newRadarItem(draft, uid(), new Date().toISOString());
+  await db.put('radarItems', item);
+  state.radar.items.push(item); emit();
+  return { ok: true, item, existing: matchesExisting(state, draft.name) };
+}
+
+export async function saveRadarItem(item) {
+  const rec = { ...item, updatedAt: new Date().toISOString() };
+  await db.put('radarItems', rec); upsert(state.radar.items, rec); emit();
+  return rec;
+}
+
+/* Supprime un produit suivi avec ses observations et son historique, en une seule transaction. Les articles et ventes ne sont pas touchés. */
+export async function removeRadarItem(id) {
+  const obs = state.radar.obs.filter((o) => o.itemId === id), hist = state.radar.history.filter((h) => h.itemId === id);
+  await db.batch([{ store: 'radarItems', del: id }, ...obs.map((o) => ({ store: 'radarObs', del: o.id })), ...hist.map((h) => ({ store: 'radarHistory', del: h.id }))]);
+  state.radar = { items: state.radar.items.filter((i) => i.id !== id), obs: state.radar.obs.filter((o) => o.itemId !== id), history: state.radar.history.filter((h) => h.itemId !== id) };
+  emit();
+}
+
+/* Enregistre une observation (mesure ou relevé daté avec sa source). Refusée si elle est invalide ou si le produit n'existe pas. */
+export async function saveRadarObs(input) {
+  const rec = { ...input, id: input.id || uid(), createdAt: input.createdAt || new Date().toISOString() }, errors = validateObservation(rec);
+  if (errors.length) throw new Error(`observation invalide : ${errors.join(', ')}.`);
+  if (!state.radar.items.some((i) => i.id === rec.itemId)) throw new Error('produit du Radar introuvable.');
+  await db.put('radarObs', rec); upsert(state.radar.obs, rec); emit();
+  return rec;
+}
+
+export async function removeRadarObs(id) {
+  await db.remove('radarObs', id);
+  state.radar.obs = state.radar.obs.filter((o) => o.id !== id); emit();
+}
+
+/* Instantanés d'analyse (un par produit et par jour : un nouvel instantané du même jour remplace le précédent). */
+export async function saveRadarSnapshots(snaps) {
+  if (!snaps.length) return;
+  await db.batch(snaps.map((s) => ({ store: 'radarHistory', put: s })));
+  for (const s of snaps) upsert(state.radar.history, s);
+  emit();
+}
+
+/* « Ajouter au stock » (status « À acheter ») ou « Marquer comme acheté » (status « En stock », prévision figée pour la calibration).
+   L'article et le produit du Radar sont écrits dans une seule transaction. Un article de même nom est refusé : { ok: false, duplicateArticle }. */
+export async function radarToArticle(itemId, { buyPrice = 0, fees = 0, status = 'À acheter', targetPrice = null, prediction = null, today = new Date().toISOString().slice(0, 10) } = {}) {
+  const item = state.radar.items.find((i) => i.id === itemId);
+  if (!item) throw new Error('produit du Radar introuvable.');
+  if (item.articleId && state.articles.some((a) => a.id === item.articleId)) throw new Error('ce produit est déjà rattaché à un article.');
+  const duplicateArticle = findDuplicate(state.articles, item.name);
+  if (duplicateArticle) return { ok: false, duplicateArticle };
+  const now = new Date().toISOString(), article = articleFromRadar(item, { id: uid(), buyPrice, fees, status, targetPrice, today, now });
+  const updated = { ...item, articleId: article.id, status: status === 'En stock' ? ITEM_STATUS.BOUGHT : item.status, prediction: prediction ?? item.prediction, updatedAt: now };
+  await db.batch([{ store: 'articles', put: article }, { store: 'radarItems', put: updated }]);
+  state.articles.push(article); upsert(state.radar.items, updated); emit();
+  return { ok: true, article, item: updated };
 }
